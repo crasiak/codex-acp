@@ -10,19 +10,25 @@ import {logger} from "./Logger";
 export interface CodexConnection {
     readonly connection: MessageConnection
     readonly process: ChildProcessWithoutNullStreams;
+    readonly profile?: string;
 }
 
 export function startCodexConnection(codexPath?: string, env?: NodeJS.ProcessEnv): CodexConnection {
     const spawnEnv = env ?? process.env;
+    const profile = spawnEnv["CODEX_PROFILE"];
+    if (profile !== undefined && (profile.length === 0 || /[^a-zA-Z0-9_-]/.test(profile))) {
+        throw new Error("CODEX_PROFILE must be a plain profile name");
+    }
+    const args = profile === undefined ? ['app-server'] : ['--profile', profile, 'app-server'];
 
     let codex: ChildProcessWithoutNullStreams;
     if (codexPath) {
         codex = process.platform === 'win32'
-            ? spawn(`"${codexPath}" app-server`, { shell: true, env: spawnEnv })
-            : spawn(codexPath, ['app-server'], { env: spawnEnv });
+            ? spawn(`"${codexPath}" ${args.join(' ')}`, { shell: true, env: spawnEnv })
+            : spawn(codexPath, args, { env: spawnEnv });
     } else {
         const bundledCodexPath = createRequire(import.meta.url).resolve("@openai/codex/bin/codex.js");
-        codex = spawn(process.execPath, [bundledCodexPath, 'app-server'], {env: spawnEnv});
+        codex = spawn(process.execPath, [bundledCodexPath, ...args], {env: spawnEnv});
     }
 
     attachLogs(codex);
@@ -39,7 +45,7 @@ export function startCodexConnection(codexPath?: string, env?: NodeJS.ProcessEnv
         connection.dispose();
     });
 
-    return {connection: connection, process: codex};
+    return {connection: connection, process: codex, ...(profile === undefined ? {} : {profile})};
 }
 
 function attachLogs(proc: ChildProcessWithoutNullStreams) {

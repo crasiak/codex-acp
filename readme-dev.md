@@ -7,6 +7,7 @@ Set `CODEX_PATH` to run a different Codex binary; versions other than the one sp
 - `OPENAI_API_KEY` - fallback API key used when the API-key auth method is selected.
 - `CODEX_PATH` - run a specific Codex executable instead of the bundled package dependency.
 - `CODEX_CONFIG` - JSON object merged into the Codex session config.
+- `CODEX_PROFILE` - optional plain profile name (`A-Z`, `a-z`, digits, `_`, `-`), passed as `--profile NAME` at app-server startup. Requires a Codex runtime supporting profiles for standalone app-server; unsupported runtimes fail without fallback. The selection lasts for the process lifetime and cannot be selected through `CODEX_CONFIG` or ACP session metadata. With this option, MCP servers supplied by the client are added alongside `CODEX_CONFIG` servers; collisions with effective/layered configuration or another supplied name (after whitespace normalization) reject the session. `DISABLE_MCP_CONFIG_FILTERING` cannot bypass this check. Without this option, existing filtering behavior is unchanged.
 - `MODEL_PROVIDER` - model provider to pass to Codex for new sessions.
 - `DEFAULT_AUTH_REQUEST` - ACP auth request JSON used when Codex requires authentication.
 - `INITIAL_AGENT_MODE` - initial mode id: `read-only`, `agent`, or `agent-full-access`.
