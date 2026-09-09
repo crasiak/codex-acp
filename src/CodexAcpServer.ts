@@ -1212,6 +1212,7 @@ export class CodexAcpServer {
             new CodexAppServerClient(state.connection.connection),
             state.config,
             state.modelProvider,
+            state.connection.profile,
         );
     }
 
