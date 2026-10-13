@@ -69,6 +69,8 @@ The adapter advertises ACP auth methods during initialization. Clients can authe
 - `OPENAI_API_KEY` - fallback API key used when the API-key auth method is selected.
 - `CODEX_PATH` - run a specific Codex executable instead of the bundled package dependency.
 - `CODEX_CONFIG` - JSON object merged into the Codex session config.
+- `CODEX_PROFILE` - select a native app-server profile for the process lifetime.
+- `CODEX_APP_SERVER_CONFIG` - opt-in trusted-launcher native startup overrides; see [protected startup](readme-dev.md#protected-native-startup-cra-955). Requires an explicit absolute `CODEX_PATH` and `CODEX_PROFILE`; unsupported on Windows.
 - `MODEL_PROVIDER` - model provider to pass to Codex for new sessions.
 - `DEFAULT_AUTH_REQUEST` - ACP auth request JSON used when Codex requires authentication.
 - `INITIAL_AGENT_MODE` - initial mode id: `read-only`, `workspace-write`, `agent`, or `agent-full-access`.

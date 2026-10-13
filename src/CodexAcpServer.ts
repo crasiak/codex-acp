@@ -1205,7 +1205,7 @@ export class CodexAcpServer {
         clearTimeout(forceKill);
 
         state.stderr = "";
-        state.connection = startCodexConnection(state.codexPath);
+        state.connection = startCodexConnection(state.codexPath, previous.protectedStartupEnv);
         this.captureStderr();
         this.observeCodexProcess();
         return new CodexAcpClient(

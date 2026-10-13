@@ -8,11 +8,53 @@ Set `CODEX_PATH` to run a different Codex binary; versions other than the one sp
 - `CODEX_PATH` - run a specific Codex executable instead of the bundled package dependency.
 - `CODEX_CONFIG` - JSON object merged into the Codex session config.
 - `CODEX_PROFILE` - optional plain profile name (`A-Z`, `a-z`, digits, `_`, `-`), passed as `--profile NAME` at app-server startup. Requires a Codex runtime supporting profiles for standalone app-server; unsupported runtimes fail without fallback. The selection lasts for the process lifetime and cannot be selected through `CODEX_CONFIG` or ACP session metadata. With this option, MCP servers supplied by the client are added alongside `CODEX_CONFIG` servers; collisions with effective/layered configuration or another supplied name (after whitespace normalization) reject the session. `DISABLE_MCP_CONFIG_FILTERING` cannot bypass this check. Without this option, existing filtering behavior is unchanged.
+- `CODEX_APP_SERVER_CONFIG` - opt-in JSON array of native startup `key=value` overrides; see the protected startup contract below.
 - `MODEL_PROVIDER` - model provider to pass to Codex for new sessions.
 - `DEFAULT_AUTH_REQUEST` - ACP auth request JSON used when Codex requires authentication.
 - `INITIAL_AGENT_MODE` - initial mode id: `read-only`, `workspace-write`, `agent`, or `agent-full-access`.
 - `NO_BROWSER` - hide browser-based ChatGPT auth when set.
 - `APP_SERVER_LOGS` - directory for adapter logs.
+
+### Protected native startup (CRA-955)
+
+Fork version `2.0.0-cra955.1` adds a transport-neutral trusted-launcher seam:
+
+```json
+{
+  "CODEX_PATH": "/absolute/path/to/codex",
+  "CODEX_PROFILE": "work",
+  "CODEX_APP_SERVER_CONFIG": "[\"model_provider=\\\"private\\\"\",\"model_providers.private.base_url=\\\"http://localhost:1234/v1\\\"\"]"
+}
+```
+
+When present (even if empty), the knob requires a valid selected `CODEX_PROFILE`
+and an explicit absolute `CODEX_PATH` matching the executable passed to startup.
+`CODEX_CONFIG` and `MODEL_PROVIDER` must be absent, not merely empty. Windows is
+rejected before spawning: protected arguments never use its legacy shell seam.
+On supported platforms startup is direct argv:
+`CODEX_PATH --profile NAME -c KEY=VALUE [-c KEY=VALUE ...] app-server`.
+Spaces and quotes remain in one argument; no shell interpolation or arbitrary
+native flags are accepted. The executable must support these native options.
+
+The JSON must contain 1–64 strings, at most 65,536 UTF-8 bytes total and 8,192
+UTF-8 bytes per string. Each string is `key=value`, with a nonempty value and
+bare dotted key segments containing only ASCII letters, digits, `_`, or `-`;
+the key cannot start with `-` (flag-like arguments are rejected).
+Whitespace around keys, quoted keys, and C0/C1 control characters (including
+newlines, tabs, NUL, and DEL) are rejected. Values are forwarded unchanged;
+validation is structural, not a TOML parser. Native Codex owns TOML/value
+interpretation and precedence, including its string fallback behavior.
+
+The protected startup environment is copied without mutating the caller or
+`process.env` and retained for app-server recreation/provider restarts. The
+selected-profile MCP merge/collision behavior is unchanged. When the knob is
+absent, existing startup behavior is unchanged (including the Windows path).
+
+This is startup forwarding for a trusted launcher, **not** authentication, a
+sandbox, or a guarantee against later ACP session/provider overrides. It does
+not attest the executable, hide argv/environment secrets, replace native
+configuration validation, or configure any particular proxy/transport. No
+native runtime compatibility or end-to-end routing is established by unit tests.
 
 ### Quick start
 
