@@ -2,7 +2,7 @@
 
 import * as acp from "@agentclientprotocol/sdk";
 import {z} from "zod";
-import {startCodexConnection} from "./CodexJsonRpcConnection";
+import {protectedModelProvider, startCodexConnection} from "./CodexJsonRpcConnection";
 import {CodexAcpServer, type CodexProcessState} from "./CodexAcpServer";
 import {createJsonStream} from "./StdUtils";
 import {isCodexAuthRequest} from "./CodexAuthMethod";
@@ -79,7 +79,9 @@ function startAcpServer() {
     const codexPath = process.env["CODEX_PATH"];
     const configString = process.env["CODEX_CONFIG"];
     const authRequestString = process.env["DEFAULT_AUTH_REQUEST"];
-    const modelProvider = process.env["MODEL_PROVIDER"];
+    // Protected startup forbids MODEL_PROVIDER; its provider override is the
+    // thread-level selection (see protectedModelProvider).
+    const modelProvider = process.env["MODEL_PROVIDER"] ?? protectedModelProvider(process.env);
     const config = configString ? JSON.parse(configString) : undefined;
     const parsedAuthRequest = authRequestString ? JSON.parse(authRequestString) : undefined;
     const defaultAuthRequest = parsedAuthRequest && isCodexAuthRequest(parsedAuthRequest) ? parsedAuthRequest : undefined;

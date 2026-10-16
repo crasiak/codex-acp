@@ -61,6 +61,34 @@ export function startCodexConnection(codexPath?: string, env?: NodeJS.ProcessEnv
 
 const controlCharacters = /[\u0000-\u001f\u007f-\u009f]/;
 
+/**
+ * The model provider a protected startup selects (its `model_provider="..."`
+ * override), or undefined. app-server rebuilds each thread's config from its
+ * layers, where a managed (MDM) `model_provider` outranks the startup `-c`, so
+ * the shim passes this explicitly at thread start (CRA-955).
+ */
+export function protectedModelProvider(env: NodeJS.ProcessEnv): string | undefined {
+    const raw = env["CODEX_APP_SERVER_CONFIG"];
+    if (raw === undefined) {
+        return undefined;
+    }
+    const entries: unknown = JSON.parse(raw);
+    if (!Array.isArray(entries)) {
+        return undefined;
+    }
+    for (const entry of entries) {
+        if (typeof entry !== "string" || !entry.startsWith("model_provider=")) {
+            continue;
+        }
+        const match = /^model_provider="([A-Za-z0-9_-]+)"$/.exec(entry);
+        if (!match) {
+            throw new Error("CODEX_APP_SERVER_CONFIG model_provider must be a quoted plain provider id");
+        }
+        return match[1];
+    }
+    return undefined;
+}
+
 function protectedConfigArgs(codexPath: string | undefined, env: NodeJS.ProcessEnv): string[] {
     if (process.platform === "win32") {
         throw new Error("CODEX_APP_SERVER_CONFIG is unsupported on Windows (shell startup is not permitted)");
