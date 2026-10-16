@@ -560,6 +560,12 @@ export class CodexAcpServer {
     }
 
     async handleError(e: Error){
+        if ((e.message.includes("log out") || e.message.includes("cloud requirements"))
+            && process.env["CODEX_APP_SERVER_CONFIG"] !== undefined) {
+            // Protected startup (CRA-955): the host owns this account. Logging
+            // out would delete its stored login, so report and leave it alone.
+            throw RequestError.internalError(`${e.message}\n\nThe account is managed by the host; sign in again in the host.`);
+        }
         if (e.message.includes("log out") || e.message.includes("cloud requirements")) {
             await this.runWithProcessCheck(() => this.codexAcpClient.logout());
             await this.refreshAuthState(null);
