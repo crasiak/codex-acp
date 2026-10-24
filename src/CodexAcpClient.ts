@@ -151,15 +151,17 @@ export class CodexAcpClient {
     private readonly subagents: CodexSubagentSubscriptions;
     private skillExtraRoots: string[] = [];
     private configPath: string | null = null;
+    private readonly selectedProfile: string | undefined;
 
 
-    constructor(codexClient: CodexAppServerClient, codexConfig?: JsonObject, modelProvider?: string) {
+    constructor(codexClient: CodexAppServerClient, codexConfig?: JsonObject, modelProvider?: string, selectedProfile?: string) {
         this.codexClient = codexClient;
         this.config = codexConfig ?? {};
         this.modelProvider = modelProvider ?? null;
         this.gatewayConfig = null;
         this.gatewayConfigSource = null;
         this.subagents = new CodexSubagentSubscriptions(codexClient);
+        this.selectedProfile = selectedProfile;
     }
 
     get appServerClient(): CodexAppServerClient {
@@ -171,7 +173,8 @@ export class CodexAcpClient {
      * that the agent set at runtime (gateway auth, `providers/set`) is copied by {@link adoptRoutingFrom}.
      */
     withAppServer(codexClient: CodexAppServerClient): CodexAcpClient {
-        const client = new CodexAcpClient(codexClient, this.config, this.modelProvider ?? undefined);
+        // CRA-357: a restarted app-server runs the same selected profile.
+        const client = new CodexAcpClient(codexClient, this.config, this.modelProvider ?? undefined, this.selectedProfile);
         client.adoptRoutingFrom(this);
         return client;
     }
@@ -971,6 +974,32 @@ export class CodexAcpClient {
             server: mcp,
         }));
         let serversToConfigure = requestedServers;
+        if (this.selectedProfile !== undefined) {
+            const overrides = configWithWorkspaceRoots["mcp_servers"];
+            if (overrides !== undefined && !isJsonObject(overrides)) {
+                throw RequestError.invalidParams("Selected MCP configuration must be an object");
+            }
+            const existingNames = await this.getConfigMcpServerNames(projectPath);
+            const reservedNames = new Set([...existingNames, ...Object.keys(overrides ?? {})]
+                .map(sanitizeMcpServerName));
+            for (const mcp of requestedServers) {
+                if (reservedNames.has(mcp.name)) {
+                    throw RequestError.invalidParams("MCP server name conflicts with the selected profile or another supplied server");
+                }
+                reservedNames.add(mcp.name);
+            }
+            // A selected profile rejects collisions instead of skipping servers.
+            return {
+                config: {
+                    ...configWithWorkspaceRoots,
+                    "mcp_servers": {
+                        ...overrides,
+                        ...Object.fromEntries(requestedServers.map(mcp => [mcp.name, this.createMcpSeverConfig(mcp.server)])),
+                    },
+                },
+                skippedMcpServers: [],
+            };
+        }
         if (shouldDeduplicateMcpConflicts()) {
             // Prevents Codex from deep-merging incompatible field types, such as url and stdio schemas.
             const existingNames = await this.getConfigMcpServerNames(projectPath);
@@ -1000,6 +1029,9 @@ export class CodexAcpClient {
 
     private async getConfigMcpServerNames(projectPath: string): Promise<Set<string>> {
         const response = await this.codexClient.configRead({ includeLayers: true, cwd: projectPath });
+        if (this.selectedProfile !== undefined && !isJsonObject(response?.config)) {
+            throw RequestError.invalidParams("Selected MCP configuration is unavailable");
+        }
         const effectiveMcpServers = response?.config?.["mcp_servers"];
         const configLayers = response?.layers ?? [];
         const layerMcpServers = configLayers.map(layer => {

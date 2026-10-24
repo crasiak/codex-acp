@@ -18,6 +18,8 @@ export interface CodexConnection {
      * `CodexAppServerSupervisor` waits for it before it disposes the connection of a dead process.
      */
     readonly drained?: Promise<void>;
+    /** The `CODEX_PROFILE` this app-server was started with (CRA-357). */
+    readonly profile?: string;
 }
 
 /** A notification that the adapter feeds into the connection after the last message of the process. */
@@ -38,16 +40,23 @@ export function startCodexConnection(
     options: StartCodexConnectionOptions = {},
 ): CodexConnection {
     const spawnEnv = env ?? process.env;
+    // CRA-357: a selected Codex profile is a startup flag, validated here so
+    // every start (the first and each supervisor restart) carries the same one.
+    const profile = spawnEnv["CODEX_PROFILE"];
+    if (profile !== undefined && (profile.length === 0 || /[^a-zA-Z0-9_-]/.test(profile))) {
+        throw new Error("CODEX_PROFILE must be a plain profile name");
+    }
+    const startupArgs = profile === undefined ? appServerStartupArgs : ["--profile", profile, ...appServerStartupArgs];
 
     let codex: ChildProcessWithoutNullStreams;
     if (codexPath) {
         // cross-spawn runs `.cmd` shims through cmd.exe with correct escaping for the TOML hook override.
         codex = process.platform === "win32"
-            ? crossSpawn(codexPath, appServerStartupArgs, {env: spawnEnv}) as ChildProcessWithoutNullStreams
-            : spawn(codexPath, appServerStartupArgs, {env: spawnEnv});
+            ? crossSpawn(codexPath, startupArgs, {env: spawnEnv}) as ChildProcessWithoutNullStreams
+            : spawn(codexPath, startupArgs, {env: spawnEnv});
     } else {
         const bundledCodexPath = require.resolve("@openai/codex/bin/codex.js");
-        codex = spawn(process.execPath, [bundledCodexPath, ...appServerStartupArgs], {env: spawnEnv});
+        codex = spawn(process.execPath, [bundledCodexPath, ...startupArgs], {env: spawnEnv});
     }
 
     attachLogs(codex);
@@ -76,7 +85,7 @@ export function startCodexConnection(
         });
     }
 
-    return {connection: connection, process: codex, drained};
+    return {connection: connection, process: codex, drained, ...(profile === undefined ? {} : {profile})};
 }
 
 /**

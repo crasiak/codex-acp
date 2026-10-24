@@ -135,7 +135,7 @@ function startAcpServer() {
 
     function createAgent(connection: acp.AgentContext): CodexAcpServer {
         const appServerClient = new CodexAppServerClient(codexProcessState.connection.connection);
-        const codexClient = new CodexAcpClient(appServerClient, hookConfig.sessionConfig, modelProvider);
+        const codexClient = new CodexAcpClient(appServerClient, hookConfig.sessionConfig, modelProvider, codexProcessState.connection.profile);
         return new CodexAcpServer(
             connection,
             codexClient,
