@@ -34,6 +34,20 @@ describe("selected-profile MCP composition", () => {
         });
     }
 
+    it("keeps native selected MCP collision checks with protected startup enabled", async () => {
+        vi.stubEnv("CODEX_APP_SERVER_CONFIG", JSON.stringify(['mcp_servers.selected.command="/not-executed"']));
+        const {client, read, start} = setup({});
+        read.mockResolvedValue({config: {mcp_servers: selected}, layers: [], origins: {}} as unknown as ConfigReadResponse);
+        await expect(client.newSession({cwd: "/fixture", mcpServers: [venue]})).rejects.toThrow("captured thread/start");
+        expect(start).toHaveBeenCalledWith(expect.objectContaining({config: expect.objectContaining({
+            mcp_servers: {venue: {url: venue.url, http_headers: {}}},
+        })}));
+        start.mockClear();
+        await expect(client.newSession({cwd: "/fixture", mcpServers: [{...venue, name: "selected"}]}))
+            .rejects.toMatchObject({code: -32602});
+        expect(start).not.toHaveBeenCalled();
+    });
+
     it.each(["false", "true"])("rejects a selected override collision with filtering=%s", filtering => {
         vi.stubEnv("DISABLE_MCP_CONFIG_FILTERING", filtering);
         const {client, start} = setup({mcp_servers: {venue: {command: "/not-executed", args: []}}});

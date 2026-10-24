@@ -87,7 +87,8 @@ export class CodexAppServerSupervisor {
         private readonly state: SupervisedProcessState,
         private readonly spawnConnection: (codexPath: string | undefined, appServerStartupArgs?: string[]) => CodexConnection =
             (codexPath, appServerStartupArgs) =>
-                startCodexConnection(codexPath, undefined, appServerStartupArgs, {disposeOnExit: false}),
+                // A protected start (CRA-955) restarts from its frozen environment, never the live one.
+                startCodexConnection(codexPath, state.connection.protectedStartupEnv, appServerStartupArgs, {disposeOnExit: false}),
         timings: Partial<SupervisorTimings> = {},
         private readonly now: () => number = Date.now,
     ) {

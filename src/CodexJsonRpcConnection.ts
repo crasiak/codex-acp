@@ -3,6 +3,7 @@ import type {Message} from "vscode-jsonrpc/node";
 import type {MessageConnection} from "vscode-jsonrpc/node";
 import {spawn, type ChildProcessWithoutNullStreams} from "node:child_process";
 import {createRequire} from "node:module";
+import {isAbsolute} from "node:path";
 import crossSpawn from "cross-spawn";
 
 import {createJSONRPCReader, createJSONRPCWriter} from "./StdUtils";
@@ -20,6 +21,8 @@ export interface CodexConnection {
     readonly drained?: Promise<void>;
     /** The `CODEX_PROFILE` this app-server was started with (CRA-357). */
     readonly profile?: string;
+    /** Present only for protected startup; reused unchanged on process recreation (CRA-955). */
+    readonly protectedStartupEnv?: NodeJS.ProcessEnv;
 }
 
 /** A notification that the adapter feeds into the connection after the last message of the process. */
@@ -39,14 +42,21 @@ export function startCodexConnection(
     appServerStartupArgs: string[] = ["app-server"],
     options: StartCodexConnectionOptions = {},
 ): CodexConnection {
-    const spawnEnv = env ?? process.env;
+    const sourceEnv = env ?? process.env;
+    // CRA-955: protected startup freezes its environment once; a restart is
+    // handed the same snapshot, so later process.env changes cannot alter it.
+    const protectedStartupEnv = sourceEnv["CODEX_APP_SERVER_CONFIG"] === undefined
+        ? undefined : Object.freeze({...sourceEnv});
+    const spawnEnv = protectedStartupEnv ?? sourceEnv;
     // CRA-357: a selected Codex profile is a startup flag, validated here so
     // every start (the first and each supervisor restart) carries the same one.
     const profile = spawnEnv["CODEX_PROFILE"];
     if (profile !== undefined && (profile.length === 0 || /[^a-zA-Z0-9_-]/.test(profile))) {
         throw new Error("CODEX_PROFILE must be a plain profile name");
     }
-    const startupArgs = profile === undefined ? appServerStartupArgs : ["--profile", profile, ...appServerStartupArgs];
+    const overrides = protectedStartupEnv === undefined ? [] : protectedConfigArgs(codexPath, spawnEnv);
+    // Global flags precede the subcommand and its own computed args.
+    const startupArgs = [...(profile === undefined ? [] : ["--profile", profile]), ...overrides, ...appServerStartupArgs];
 
     let codex: ChildProcessWithoutNullStreams;
     if (codexPath) {
@@ -85,7 +95,50 @@ export function startCodexConnection(
         });
     }
 
-    return {connection: connection, process: codex, drained, ...(profile === undefined ? {} : {profile})};
+    return {
+        connection, process: codex, drained,
+        ...(profile === undefined ? {} : {profile}),
+        ...(protectedStartupEnv === undefined ? {} : {protectedStartupEnv}),
+    };
+}
+
+const controlCharacters = /[\u0000-\u001f\u007f-\u009f]/;
+
+function protectedConfigArgs(codexPath: string | undefined, env: NodeJS.ProcessEnv): string[] {
+    if (process.platform === "win32") {
+        throw new Error("CODEX_APP_SERVER_CONFIG is unsupported on Windows (shell startup is not permitted)");
+    }
+    if (env["CODEX_PROFILE"] === undefined) {
+        throw new Error("CODEX_APP_SERVER_CONFIG requires CODEX_PROFILE");
+    }
+    if (!codexPath || codexPath !== env["CODEX_PATH"] || !isAbsolute(codexPath) || controlCharacters.test(codexPath)) {
+        throw new Error("CODEX_APP_SERVER_CONFIG requires an exact absolute CODEX_PATH executable");
+    }
+    if (env["CODEX_CONFIG"] !== undefined || env["MODEL_PROVIDER"] !== undefined) {
+        throw new Error("CODEX_APP_SERVER_CONFIG cannot be combined with CODEX_CONFIG or MODEL_PROVIDER");
+    }
+    const raw = env["CODEX_APP_SERVER_CONFIG"]!;
+    if (Buffer.byteLength(raw, "utf8") > 65536) {
+        throw new Error("CODEX_APP_SERVER_CONFIG exceeds 65536 UTF-8 bytes");
+    }
+    let entries: unknown;
+    try {
+        entries = JSON.parse(raw);
+    } catch {
+        throw new Error("CODEX_APP_SERVER_CONFIG must be a JSON array of key=value strings");
+    }
+    if (!Array.isArray(entries) || entries.length === 0 || entries.length > 64) {
+        throw new Error("CODEX_APP_SERVER_CONFIG must contain 1 to 64 overrides");
+    }
+    return entries.flatMap((entry: unknown, index) => {
+        // Deliberately only structural validation, not a TOML parser. Values are
+        // interpreted by native Codex; bare dotted keys avoid ambiguous key syntax.
+        if (typeof entry !== "string" || Buffer.byteLength(entry, "utf8") > 8192
+            || controlCharacters.test(entry) || !/^[a-zA-Z0-9_][a-zA-Z0-9_-]*(?:\.[a-zA-Z0-9_-]+)*=\s*\S/.test(entry)) {
+            throw new Error(`CODEX_APP_SERVER_CONFIG entry ${index} must be a nonempty bare dotted key=value string, at most 8192 UTF-8 bytes, without control characters`);
+        }
+        return ["-c", entry];
+    });
 }
 
 /**
