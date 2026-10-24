@@ -15,7 +15,7 @@ describe("Protected startup never logs out", () => {
             vi.stubEnv("CODEX_APP_SERVER_CONFIG", "[]");
             const fixture = createCodexMockTestFixture();
             const codexAcpClient = fixture.getCodexAcpClient();
-            vi.spyOn(codexAcpClient, "authRequired").mockResolvedValue(false);
+            vi.spyOn(codexAcpClient, "readAuthRequirement").mockResolvedValue({required: false, account: null});
             vi.spyOn(fixture.getCodexAppServerClient(), "threadStart").mockRejectedValue(new Error(message));
             const logoutSpy = vi.spyOn(codexAcpClient, "logout").mockResolvedValue();
 
