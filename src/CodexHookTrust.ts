@@ -20,6 +20,11 @@ export async function trustCodexHooks(
     cwd: string,
     requested: CodexHookIdentity[],
 ): Promise<boolean> {
+    if (process.env["CODEX_APP_SERVER_CONFIG"] !== undefined) {
+        // Protected startup (CRA-955): the host owns CODEX_HOME's config.
+        // Recording trust would write into it, so the host must trust hooks.
+        throw new Error("Hook trust is managed by the host under protected startup");
+    }
     const isListed = (hooks: HookMetadata[], request: CodexHookIdentity) =>
         hooks.find(hook => hook.key === request.key && hook.currentHash === request.currentHash);
 

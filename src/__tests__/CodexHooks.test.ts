@@ -1,4 +1,4 @@
-import {describe, expect, it, vi} from "vitest";
+import {afterEach, describe, expect, it, vi} from "vitest";
 import type {CodexAppServerClient} from "../CodexAppServerClient";
 import {prepareCodexHookConfig} from "../CodexHookConfig";
 import {listCodexHooks, trustCodexHooks} from "../CodexHookTrust";
@@ -30,6 +30,20 @@ function response(hooks: unknown[], warnings: string[] = [], errors: {path: stri
 }
 
 describe("Codex hook trust", () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it("refuses to write trust into a host-managed config under protected startup", async () => {
+        vi.stubEnv("CODEX_APP_SERVER_CONFIG", '["model_provider=\\"aperture\\""]');
+        const client = {
+            hooksList: vi.fn().mockResolvedValue(response([hook])),
+            configBatchWrite: vi.fn().mockResolvedValue({status: "ok"}),
+        } as unknown as CodexAppServerClient;
+
+        await expect(trustCodexHooks(client, cwd, [{key: hook.key, currentHash: hook.currentHash}]))
+            .rejects.toThrow("Hook trust is managed by the host under protected startup");
+        expect(client.configBatchWrite).not.toHaveBeenCalled();
+    });
+
     it("lists only session-flag hooks", async () => {
         const client = {
             hooksList: vi.fn().mockResolvedValue(response([hook, {...hook, key: "user-hook", source: "user"}])),
